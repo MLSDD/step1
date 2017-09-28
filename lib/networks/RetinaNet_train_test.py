@@ -33,7 +33,7 @@ class RetinaNet_train_test(Network):
         num_anchor_ratio = 1 # 1:1
         num_anchor_scale = 3 # 2**0, 2**(1/3), 2**(2/3)
         num_anchor = num_anchor_ratio * num_anchor_scale
-        anchor_size = [32, 64,128] # Only use the res,res3,res4
+        anchor_size = [16,32,64] # Only use the res,res3,res4
         _feat_stride = [8,16,32]
 
         with tf.variable_scope('res1_2'):
