@@ -158,37 +158,32 @@ def im_detect(sess, net, im, boxes=None):
     # forward pass
     feed_dict={net.data: blobs['data'], net.im_info: blobs['im_info']}
 
+    cls_score_P2, cls_prob_P2, bbox_pred_P2, \
     cls_score_P3, cls_prob_P3, bbox_pred_P3, \
     cls_score_P4, cls_prob_P4, bbox_pred_P4, \
-    cls_score_P5, cls_prob_P5, bbox_pred_P5, \
-    cls_score_P6, cls_prob_P6, bbox_pred_P6, \
-    cls_score_P7, cls_prob_P7, bbox_pred_P7, \
         = sess.run([ \
+                        net.get_output('cls_score/P2'), net.get_output('cls_prob/P2'), net.get_output('box_pred_reshape/P2'), \
                         net.get_output('cls_score/P3'), net.get_output('cls_prob/P3'), net.get_output('box_pred_reshape/P3'), \
                         net.get_output('cls_score/P4'), net.get_output('cls_prob/P4'), net.get_output('box_pred_reshape/P4'), \
-                        net.get_output('cls_score/P5'), net.get_output('cls_prob/P5'), net.get_output('box_pred_reshape/P5'), \
-                        net.get_output('cls_score/P6'), net.get_output('cls_prob/P6'), net.get_output('box_pred_reshape/P6'), \
-                        net.get_output('cls_score/P7'), net.get_output('cls_prob/P7'), net.get_output('box_pred_reshape/P7'), \
                    ],\
                  feed_dict=feed_dict)
 
     # rois[P3~P7] = anchor_generator()
-    num_anchor_ratio = 3  # 1:2, 1:1, 2:1
+    num_anchor_ratio = 1  # 1:2, 1:1, 2:1
     num_anchor_scale = 3  # could be config
-    _feat_strides = [8, 16, 32, 64, 128]
-    anchor_sizes = [32, 64, 128, 256, 512]
+    _feat_strides = [8, 16, 32]
+    anchor_sizes = [16, 32, 64]
     anchor_scales = np.array(anchor_sizes) / np.array(_feat_strides)
 
-    sizes = np.power(2, [0.0, 1.0/3, 2.0/3])
-    _anchors = [None, None, None, None, None]
+    sizes = np.power(2, [-1/3., 0., 1.0/3])
+    _anchors = [None, None, None]
 
-    _anchors[0] = generate_anchors(base_size=_feat_strides[0], scales=anchor_scales[0]*sizes[:num_anchor_scale])
-    _anchors[1] = generate_anchors(base_size=_feat_strides[1], scales=anchor_scales[1]*sizes[:num_anchor_scale])
-    _anchors[2] = generate_anchors(base_size=_feat_strides[2], scales=anchor_scales[2]*sizes[:num_anchor_scale])
-    _anchors[3] = generate_anchors(base_size=_feat_strides[3], scales=anchor_scales[3]*sizes[:num_anchor_scale])
-    _anchors[4] = generate_anchors(base_size=_feat_strides[4], scales=anchor_scales[4]*sizes[:num_anchor_scale])
-
+    _anchors[0] = generate_anchors(base_size=_feat_strides[0], ratios=[1.],scales=anchor_scales[0]*sizes[:num_anchor_scale])
+    #print(_anchors[0].shape)
+    _anchors[1] = generate_anchors(base_size=_feat_strides[1], ratios=[1.],scales=anchor_scales[1]*sizes[:num_anchor_scale])
+    _anchors[2] = generate_anchors(base_size=_feat_strides[2], ratios=[1.],scales=anchor_scales[2]*sizes[:num_anchor_scale])
     _num_anchors = [anchor.shape[0] for anchor in _anchors]
+    #print(_num_anchors)
 
     # Algorithm:
     #
@@ -199,14 +194,13 @@ def im_detect(sess, net, im, boxes=None):
 
     pred_boxes_P = []
 
-    cls_score_P = [cls_score_P3, cls_score_P4, cls_score_P5, cls_score_P6, cls_score_P7]
-    cls_prob_P = [cls_prob_P3, cls_prob_P4, cls_prob_P5, cls_prob_P6, cls_prob_P7]
-    bbox_pred_P = [bbox_pred_P3, bbox_pred_P4, bbox_pred_P5, bbox_pred_P6, bbox_pred_P7]
+    cls_score_P = [cls_score_P2, cls_score_P3, cls_score_P4]
+    cls_prob_P = [cls_prob_P2, cls_prob_P3, cls_prob_P4]
+    bbox_pred_P = [bbox_pred_P2, bbox_pred_P3, bbox_pred_P4]
 
     for idx, elem in enumerate(zip(cls_score_P, bbox_pred_P)):
 
         cls_score, box_deltas = elem
-
         assert cls_score.shape[0] == 1, \
             'Only single item batches are supported'
 
@@ -215,6 +209,7 @@ def im_detect(sess, net, im, boxes=None):
 
         # 1. Generate proposals from bbox deltas and shifted anchors
         shift_x = np.arange(0, width) * _feat_strides[idx]
+	print(shift_x.shape)
         shift_y = np.arange(0, height) * _feat_strides[idx]
         shift_x, shift_y = np.meshgrid(shift_x, shift_y) # in W H order
         # K is H x W
@@ -335,7 +330,7 @@ def apply_nms(all_boxes, thresh):
     return nms_boxes
 
 
-def test_net(sess, net, imdb, weights_filename , max_per_image=1000, thresh=0.05, vis=False):
+def test_net(sess, net, imdb, weights_filename , max_per_image=1000, thresh=0.045, vis=False):
     """Test a Fast R-CNN network on an image database."""
     num_images = len(imdb.image_index)
     # all detections are collected into:
@@ -354,7 +349,6 @@ def test_net(sess, net, imdb, weights_filename , max_per_image=1000, thresh=0.05
 
     if not cfg.TEST.HAS_RPN:
         roidb = imdb.roidb
-
     det_file = os.path.join(output_dir, 'detections.pkl')
     # if os.path.exists(det_file):
     #     with open(det_file, 'rb') as f:
@@ -410,13 +404,16 @@ def test_net(sess, net, imdb, weights_filename , max_per_image=1000, thresh=0.05
                 #print np.squeeze(boxes[k][inds, :]).shape
                 cls_dets = np.hstack((cls_boxes, cls_scores[:, np.newaxis])) \
                     .astype(np.float32, copy=False)
-                try:
-                    keep = nms(cls_dets, cfg.TEST.NMS)
+		print(cls_boxes)
+              
+                keep = nms(cls_dets, cfg.TEST.NMS)
+		"""
                 except:
                     print "cls_dets.shape:"
                     print cls_dets.shape
                     print "cls_dets:"
                     print cls_dets
+		"""
                 cls_dets = cls_dets[keep, :]
                 if vis:
                     vis_detections(image, imdb.classes[j], cls_dets)

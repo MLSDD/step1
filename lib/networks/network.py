@@ -566,7 +566,7 @@ class Network(object):
             return tf.square(deltas) * 0.5 * sigma2 * smoothL1_sign + \
                         (deltas_abs - 0.5 / sigma2) * tf.abs(smoothL1_sign - 1)
 
-    def focal_loss(self, pred, label, num_class=2, alpha=0.25, gamma=2.0):
+    def focal_loss(self, pred, label, num_class=2, alpha=0.25, gamma=5.0):
         label_one_hot = tf.one_hot(indices=label, depth=num_class, on_value=1.0, off_value=0.0, axis=-1, dtype=tf.float32)
         pt = tf.reduce_sum(tf.multiply(pred, label_one_hot), axis=1)
 
